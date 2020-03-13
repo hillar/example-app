@@ -1,0 +1,29 @@
+version: "3.7"
+
+services:
+  emulator:
+    image: badrap/emulator:v0.5.0
+    environment:
+      INTEGRATION_URL: http://integration:4005/api
+    ports:
+      - "4004:4004"
+
+  integration:
+    image: node:13.10.1-alpine
+    init: true
+    command: /bin/sh -c 'yarn --frozen-lockfile --mutex file:/yarn/mutex && yarn dev'
+    working_dir: /app
+    volumes:
+      - .:/app
+      - yarn:/yarn
+      - node-modules:/app/node_modules
+    environment:
+      YARN_CACHE_FOLDER: /yarn/cache
+      SERVER_URL: http://emulator:4004
+      INTEGRATION_TOKEN: "111111111-2222-3333-44444-555555555555"
+    ports:
+      - "4005:4005"
+
+volumes:
+  yarn: {}
+  node-modules: {}
