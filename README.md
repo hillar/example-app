@@ -19,7 +19,7 @@ The aim is to demonstrate most of the integrations API functionality and develop
 
 - Updating assets in a background polling loop
 
-Start reading the code from [`src/index.py`](src/index.py).
+Start reading the code from [`src/index.js`](src/index.js).
 
 ## Launching the Development Environment
 
