@@ -23,13 +23,7 @@ Start reading the code from [`src/index.py`](src/index.py).
 
 ## Launching the Development Environment
 
-First ensure that you have the newest versions of the base images (especially the API emulator):
-
-```sh
-$ docker-compose pull
-```
-
-After this launch the development server that will restart on each code change. Docker Compose will also launch the API emulator that acts as a frontend to the JavaScript service.
+Launch the development server that will restart on each code change. Docker Compose will also launch the API emulator that acts as a frontend to the JavaScript service.
 
 ```sh
 $ docker-compose up
