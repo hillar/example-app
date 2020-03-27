@@ -46,6 +46,52 @@ class HttpError extends Error {
   }
 }
 
+async function getState(installationId) {
+  const { state } = await request("/app/installations/" + installationId, {
+    method: "GET"
+  }).then(r => r.json());
+  return state;
+}
+
+async function setState(installationId, callback) {
+  for (;;) {
+    // Read the current state. Remember the ETag.
+    const response = await request("/app/installations/" + installationId, {
+      method: "GET"
+    });
+    const etag = response.headers.get("etag");
+    const { state } = await response.json();
+
+    const newState = await callback(state);
+
+    // Skip updating if the new state is falsy (undefined etc.)
+    if (!newState) {
+      return state;
+    }
+
+    try {
+      // Store the updated state. Use the previous ETag to ensure
+      // that the state hasn't changed since we read it.
+      // HTTP error code 412 means that the state has changed and we should
+      // retry.
+      await request("/app/installations/" + installationId, {
+        method: "PATCH",
+        headers: {
+          "If-Match": etag,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ state: newState })
+      });
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 412) {
+        continue;
+      }
+      throw err;
+    }
+    return newState;
+  }
+}
+
 // Go through the installation list once. Update the assets for each installation.
 async function pollOnce() {
   // Get the list of installation list.
@@ -63,9 +109,7 @@ async function pollOnce() {
     }
 
     // Get the installation's current state.
-    const { state } = await request("/app/installations/" + id, {
-      method: "GET"
-    }).then(r => r.json());
+    const { state } = await getState(id);
 
     const assets = [];
     for (const domain of state.domains || []) {
@@ -124,73 +168,6 @@ poll().then(
   }
 );
 
-const routes = router();
-
-// Check that the requests are sent by the server.
-routes.use(async (req, res) => {
-  const auth = req.headers.authorization || "";
-  const match = auth.match(/^Bearer\s+([a-z0-9-._~+/]+=*)$/i);
-  if (!match) {
-    return res.sendStatus(401);
-  }
-  res.locals.token = await request("/app/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      token: match[1]
-    })
-  }).then(r => r.json());
-  return "next";
-});
-
-async function getState(installationId) {
-  const { state } = await request("/app/installations/" + installationId, {
-    method: "GET"
-  }).then(r => r.json());
-  return state;
-}
-
-async function setState(installationId, callback) {
-  for (;;) {
-    // Read the current state. Remember the ETag.
-    const response = await request("/app/installations/" + installationId, {
-      method: "GET"
-    });
-    const etag = response.headers.get("etag");
-    const { state } = await response.json();
-
-    const newState = await callback(state);
-
-    // Skip updating if the new state is falsy (undefined etc.)
-    if (!newState) {
-      return state;
-    }
-
-    try {
-      // Store the updated state. Use the previous ETag to ensure
-      // that the state hasn't changed since we read it.
-      // HTTP error code 412 means that the state has changed and we should
-      // retry.
-      await request("/app/installations/" + installationId, {
-        method: "PATCH",
-        headers: {
-          "If-Match": etag,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ state: newState })
-      });
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 412) {
-        continue;
-      }
-      throw err;
-    }
-    return newState;
-  }
-}
-
 const ui = htm.bind((type, props, ...children) => {
   if (typeof type === "string") {
     return {
@@ -223,6 +200,27 @@ function DomainList({ domains = [] }) {
       `
   );
 }
+
+const routes = router();
+
+// Check that the requests are sent by the server.
+routes.use(async (req, res) => {
+  const auth = req.headers.authorization || "";
+  const match = auth.match(/^Bearer\s+([a-z0-9-._~+/]+=*)$/i);
+  if (!match) {
+    return res.sendStatus(401);
+  }
+  res.locals.token = await request("/app/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      token: match[1]
+    })
+  }).then(r => r.json());
+  return "next";
+});
 
 routes.post("/ui", express.json(), async (req, res) => {
   const { action = {}, clientState = {} } = req.body.payload;
