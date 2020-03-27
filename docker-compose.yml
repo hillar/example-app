@@ -2,13 +2,13 @@ version: "3.7"
 
 services:
   emulator:
-    image: badrap/emulator:v0.5.0
+    image: badrap/emulator:v0.6.0
     environment:
-      INTEGRATION_URL: http://integration:4005/api
+      APP_URL: http://app:4005/app
     ports:
       - "4004:4004"
 
-  integration:
+  app:
     image: node:13.10.1-alpine
     command: /bin/sh -c 'yarn --frozen-lockfile && yarn dev'
     working_dir: /app
@@ -17,6 +17,6 @@ services:
       - /app/node_modules
     environment:
       SERVER_URL: http://emulator:4004
-      INTEGRATION_TOKEN: "111111111-2222-3333-44444-555555555555"
+      APP_TOKEN: "111111111-2222-3333-44444-555555555555"
     ports:
       - "4005:4005"

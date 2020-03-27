@@ -1,15 +1,15 @@
 # Example - Domains to IPs
 
-This directory contains a JavaScript-based integration example. The integration offers an editable list of domain names whose resolved IPv4 addresses are then used as assets.
+This directory contains a JavaScript-based app example. The app offers an editable list of domain names whose resolved IPv4 addresses are then used as assets.
 
-The aim is to demonstrate most of the integrations API functionality and development flow:
+The aim is to demonstrate most of the apps API functionality and development flow:
 
 - Using the API emulator and Docker Compose for development
 
-- Interacting with Badrap integrations API
+- Interacting with Badrap apps API
 
-  - Fetching & updating instance state
-  - Authenticating requests to and from the Badrap integrations API
+  - Fetching & updating installation state
+  - Authenticating requests to and from the Badrap apps API
 
 - UI coding
 

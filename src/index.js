@@ -10,8 +10,8 @@ const htm = require("htm");
 // Read the configuration from environment variables.
 const [
   SERVER_URL, // Badrap's base URL (e.g. "https://staging.badrap.io/")
-  INTEGRATION_TOKEN // The token used to authenticate to SERVER_URL
-] = ["SERVER_URL", "INTEGRATION_TOKEN"].map(key => {
+  APP_TOKEN // The token used to authenticate to SERVER_URL
+] = ["SERVER_URL", "APP_TOKEN"].map(key => {
   if (!process.env[key]) {
     console.error(`ERROR: environment variable ${key} not set`);
     process.exit(2);
@@ -24,7 +24,7 @@ async function request(url, options = {}) {
 
   // Deliver the token in the Authorization header.
   const headers = {
-    Authorization: `Bearer ${INTEGRATION_TOKEN}`,
+    Authorization: `Bearer ${APP_TOKEN}`,
     ...options.headers
   };
 
@@ -45,24 +45,24 @@ class HttpError extends Error {
   }
 }
 
-// Go through the instance list once. Update the assets for each instance.
+// Go through the installation list once. Update the assets for each installation.
 async function pollOnce() {
-  // Get the list of instance list.
-  const instances = await request("/api/integration/instances", {
+  // Get the list of installation list.
+  const installations = await request("/api/app/installations", {
     method: "GET"
   }).then(r => r.json());
 
-  for (const { id, removed } of instances) {
-    // Clean up instances of removed users (etc.)
+  for (const { id, removed } of installations) {
+    // Clean up installations of removed users (etc.)
     if (removed) {
-      await request("/api/integration/instances/" + id, {
+      await request("/api/app/installations/" + id, {
         method: "DELETE"
       });
       continue;
     }
 
-    // Get the instance's current state.
-    const { state } = await request("/api/integration/instances/" + id, {
+    // Get the installation's current state.
+    const { state } = await request("/api/app/installations/" + id, {
       method: "GET"
     }).then(r => r.json());
 
@@ -83,10 +83,10 @@ async function pollOnce() {
       }
     }
 
-    // Send the new list of assets for this instance.
+    // Send the new list of assets for this installation.
     // Let's also ignore potential concurrently happened state changes
     // with If-Match: *, as we only update the assets.
-    await request("/api/integration/instances/" + id, {
+    await request("/api/app/installations/" + id, {
       method: "PATCH",
       headers: {
         "If-Match": "*",
@@ -97,7 +97,7 @@ async function pollOnce() {
   }
 }
 
-// Update the assets for all instances continuously,
+// Update the assets for all installations continuously,
 // rechecking them every 10 seconds.
 async function poll() {
   for (;;) {
@@ -123,16 +123,16 @@ poll().then(
   }
 );
 
-const api = router();
+const routes = router();
 
 // Check that the requests are sent by the server.
-api.use(async (req, res) => {
+routes.use(async (req, res) => {
   const auth = req.headers.authorization || "";
   const match = auth.match(/^Bearer\s+([a-z0-9-._~+/]+=*)$/i);
   if (!match) {
     return res.sendStatus(401);
   }
-  res.locals.token = await request("/api/integration/token", {
+  res.locals.token = await request("/api/app/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -144,17 +144,17 @@ api.use(async (req, res) => {
   return "next";
 });
 
-async function getState(instanceId) {
-  const { state } = await request("/api/integration/instances/" + instanceId, {
+async function getState(installationId) {
+  const { state } = await request("/api/app/installations/" + installationId, {
     method: "GET"
   }).then(r => r.json());
   return state;
 }
 
-async function setState(instanceId, callback) {
+async function setState(installationId, callback) {
   for (;;) {
     // Read the current state. Remember the ETag.
-    const response = await request("/api/integration/instances/" + instanceId, {
+    const response = await request("/api/app/installations/" + installationId, {
       method: "GET"
     });
     const etag = response.headers.get("etag");
@@ -172,7 +172,7 @@ async function setState(instanceId, callback) {
       // that the state hasn't changed since we read it.
       // HTTP error code 412 means that the state has changed and we should
       // retry.
-      await request("/api/integration/instances/" + instanceId, {
+      await request("/api/app/installations/" + installationId, {
         method: "PATCH",
         headers: {
           "If-Match": etag,
@@ -223,12 +223,12 @@ function DomainList({ domains = [] }) {
   );
 }
 
-api.post("/ui", express.json(), async (req, res) => {
+routes.post("/ui", express.json(), async (req, res) => {
   const { action = {}, clientState = {} } = req.body.payload;
-  const { instanceId } = res.locals.token;
+  const { installationId } = res.locals.token;
 
   if (action.type === "add") {
-    await setState(instanceId, state => {
+    await setState(installationId, state => {
       const domain = clientState.domain;
       if (!domain) {
         return;
@@ -240,7 +240,7 @@ api.post("/ui", express.json(), async (req, res) => {
       }
     });
   } else if (action.type === "delete") {
-    await setState(instanceId, state => {
+    await setState(installationId, state => {
       if (!state.domains) {
         return;
       }
@@ -253,7 +253,7 @@ api.post("/ui", express.json(), async (req, res) => {
     });
   }
 
-  const state = await getState(instanceId);
+  const state = await getState(installationId);
   res.json(ui`
     <Box class="flex justify-center">
       <Box class="w-2/5 w-3">
@@ -270,11 +270,11 @@ api.post("/ui", express.json(), async (req, res) => {
   `);
 });
 
-api.use("/static", express.static(path.resolve(__dirname, "../static")));
+routes.use("/static", express.static(path.resolve(__dirname, "../static")));
 
 const app = express();
 app.use(morgan("dev"));
-app.use("/api", api);
+app.use("/app", routes);
 const server = app.listen(process.env.PORT || 4005, () => {
   const addr = server.address();
   console.log("Listening on port %s...", addr.port);
