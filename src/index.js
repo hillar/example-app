@@ -9,9 +9,9 @@ const htm = require("htm");
 
 // Read the configuration from environment variables.
 const [
-  SERVER_URL, // Badrap's base URL (e.g. "https://staging.badrap.io/")
-  APP_TOKEN // The token used to authenticate to SERVER_URL
-] = ["SERVER_URL", "APP_TOKEN"].map(key => {
+  API_URL, // Badrap's base API URL (e.g. "https://staging.badrap.io/api")
+  API_TOKEN // The token used to authenticate to API_URL
+] = ["API_URL", "API_TOKEN"].map(key => {
   if (!process.env[key]) {
     console.error(`ERROR: environment variable ${key} not set`);
     process.exit(2);
@@ -19,16 +19,17 @@ const [
   return process.env[key];
 });
 
-async function request(url, options = {}) {
-  const realUrl = new URL(url, SERVER_URL).toString();
+async function request(apiPath, options = {}) {
+  const url = new URL(API_URL);
+  url.pathname = path.posix.resolve(url.pathname, "./" + apiPath);
 
   // Deliver the token in the Authorization header.
   const headers = {
-    Authorization: `Bearer ${APP_TOKEN}`,
+    Authorization: `Bearer ${API_TOKEN}`,
     ...options.headers
   };
 
-  const response = await fetch(realUrl, { ...options, headers });
+  const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     throw new HttpError(response.status, response.statusText);
   }
@@ -48,21 +49,21 @@ class HttpError extends Error {
 // Go through the installation list once. Update the assets for each installation.
 async function pollOnce() {
   // Get the list of installation list.
-  const installations = await request("/api/app/installations", {
+  const installations = await request("/app/installations", {
     method: "GET"
   }).then(r => r.json());
 
   for (const { id, removed } of installations) {
     // Clean up installations of removed users (etc.)
     if (removed) {
-      await request("/api/app/installations/" + id, {
+      await request("/app/installations/" + id, {
         method: "DELETE"
       });
       continue;
     }
 
     // Get the installation's current state.
-    const { state } = await request("/api/app/installations/" + id, {
+    const { state } = await request("/app/installations/" + id, {
       method: "GET"
     }).then(r => r.json());
 
@@ -86,7 +87,7 @@ async function pollOnce() {
     // Send the new list of assets for this installation.
     // Let's also ignore potential concurrently happened state changes
     // with If-Match: *, as we only update the assets.
-    await request("/api/app/installations/" + id, {
+    await request("/app/installations/" + id, {
       method: "PATCH",
       headers: {
         "If-Match": "*",
@@ -132,7 +133,7 @@ routes.use(async (req, res) => {
   if (!match) {
     return res.sendStatus(401);
   }
-  res.locals.token = await request("/api/app/token", {
+  res.locals.token = await request("/app/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -145,7 +146,7 @@ routes.use(async (req, res) => {
 });
 
 async function getState(installationId) {
-  const { state } = await request("/api/app/installations/" + installationId, {
+  const { state } = await request("/app/installations/" + installationId, {
     method: "GET"
   }).then(r => r.json());
   return state;
@@ -154,7 +155,7 @@ async function getState(installationId) {
 async function setState(installationId, callback) {
   for (;;) {
     // Read the current state. Remember the ETag.
-    const response = await request("/api/app/installations/" + installationId, {
+    const response = await request("/app/installations/" + installationId, {
       method: "GET"
     });
     const etag = response.headers.get("etag");
@@ -172,7 +173,7 @@ async function setState(installationId, callback) {
       // that the state hasn't changed since we read it.
       // HTTP error code 412 means that the state has changed and we should
       // retry.
-      await request("/api/app/installations/" + installationId, {
+      await request("/app/installations/" + installationId, {
         method: "PATCH",
         headers: {
           "If-Match": etag,
