@@ -109,7 +109,7 @@ async function pollOnce() {
     }
 
     // Get the installation's current state.
-    const { state } = await getState(id);
+    const state = await getState(id);
 
     const assets = [];
     for (const domain of state.domains || []) {
